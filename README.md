@@ -11,35 +11,69 @@ A multi-modal customer support agent that combines LLM-powered chat, document Q&
 - **Streamlit Web App**: User-friendly interface for all features.
 - **REST API**: FastAPI endpoints for complaints, order status, and escalations.
 
+## Project Structure
+
+```
+customer_service_project/
+│
+├── streamlit_app/
+│   └── streamlit_customer_service.py       # Streamlit UI code
+│
+├── agents/
+│   └── customer_agent.py                   # Core agent logic (intent classification, etc.)
+│
+├── rag/
+│   └── rag_module.py                       # Retrieval-Augmented Generation logic
+│
+├── api/
+│   └── api.py                              # FastAPI backend
+│
+├── data/
+│   └── store_qa.csv                        # CSV file for FAQ/QA
+│   └── documents/                          # Folder for additional docs (PDFs, txt, etc.)
+│
+├── requirements.txt                        # Python dependencies
+├── README.md                               # Project overview
+├── .env                                    # (Gitignored) API keys and secrets
+└── .gitignore                              # Ignore .env, __pycache__, etc.
+```
+
 ## File Overview
 
-- `streamlit_customer_service.py`: Streamlit app for chat, order tracking, complaints, document Q&A, and escalation.
-- `customer_agent.py`: Core logic for intent extraction, FAQ, complaint, order tracking, escalation, and RAG integration.
-- `rag_module.py`: RAG (Retrieval-Augmented Generation) module for document loading, Q&A, and status.
-- `api.py`: FastAPI backend for complaints, order status, and escalation endpoints.
-- `store_qa.csv`: Example CSV for FAQ/document Q&A.
+- `streamlit_app/streamlit_customer_service.py`: Streamlit app for chat, order tracking, complaints, document Q&A, and escalation.
+- `agents/customer_agent.py`: Core logic for intent extraction, FAQ, complaint, order tracking, escalation, and RAG integration.
+- `rag/rag_module.py`: RAG (Retrieval-Augmented Generation) module for document loading, Q&A, and status.
+- `api/api.py`: FastAPI backend for complaints, order status, and escalation endpoints.
+- `data/store_qa.csv`: Example CSV for FAQ/document Q&A.
+- `data/documents/`: Directory for storing additional documents (PDFs, TXT files, etc.).
 
 ## Getting Started
 
 ### 1. Install Requirements
 
 ```bash
-pip install fastapi uvicorn streamlit langchain langchain-google-genai langchain-community chromadb pydantic requests
+pip install -r requirements.txt
 ```
 
 ### 2. Set up Google API Key
 
-Set your Google Generative AI API key as an environment variable:
+Copy the `.env` file and add your Google Generative AI API key:
+
+```bash
+cp .env .env.local
+# Edit .env.local and add your actual API key
+```
+
+Or set it as an environment variable:
 
 ```bash
 export GOOGLE_API_KEY="your-api-key-here"
 ```
 
-Or modify the API key in `customer_agent.py`.
-
 ### 3. Run the API Server
 
 ```bash
+cd api
 uvicorn api:app --reload
 ```
 
@@ -48,6 +82,7 @@ The API will be available at `http://localhost:8000`
 ### 4. Launch the Streamlit App
 
 ```bash
+cd streamlit_app
 streamlit run streamlit_customer_service.py
 ```
 
@@ -119,7 +154,8 @@ The system uses:
 ## Sample Data
 
 - Example order IDs: `ORD123`, `ORD456`
-- Sample CSV data in `store_qa.csv` for FAQ responses
+- Sample CSV data in `data/store_qa.csv` for FAQ responses
+- Additional documents can be stored in `data/documents/`
 - In-memory storage for demo purposes
 
 ## Notes

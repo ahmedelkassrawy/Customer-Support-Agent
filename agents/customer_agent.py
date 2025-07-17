@@ -2,6 +2,9 @@
 import os
 import uuid
 import requests
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -15,8 +18,16 @@ from typing import List, Optional
 from pydantic import BaseModel
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain import hub
-from rag_module import load_document_for_qa, ask_document_question, get_document_status, clear_current_document
-os.environ["GOOGLE_API_KEY"] = "AIzaSyAib5iH_zllA8RKdTZLIzKc9T0ajbpm-ic"
+from rag.rag_module import load_document_for_qa, ask_document_question, get_document_status, clear_current_document
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Get API key from environment
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if GOOGLE_API_KEY:
+    os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-001")
 
@@ -45,10 +56,8 @@ def extract_intent(state: Schema):
         state["status"] = "track"
     elif "escalate" in last_message or "escalation" in last_message:
         state["status"] = "escalate"
-    # RAG-specific questions - when user mentions document queries or wants to ask about document content
     elif any(word in last_message for word in ["document", "file", "pdf", "csv", "txt", "upload", "load"]) or "document" in last_message:
         state["status"] = "rag"
-    # FAQ questions - questions about policies, procedures, timeframes
     elif any(word in last_message for word in ["how many", "how long", "what is", "when", "where", "why", "policy", "days", "time", "hours"]):
         state["status"] = "faq"
     else:
@@ -61,7 +70,6 @@ def rag(state: Schema):
     try:
         user_input = state["question"].lower()
         
-        # Check if user wants to see document status (most specific first)
         if "document status" in user_input or ("status" in user_input and "document" in user_input):
             status = get_document_status()
             if status["is_loaded"]:
@@ -70,12 +78,11 @@ def rag(state: Schema):
                 message = "📄 No document is currently loaded. Use 'load document' to load a new document."
             return {"messages": state["messages"] + [AIMessage(content=message)]}
         
-        # Check if user wants to clear the document
+
         elif "clear document" in user_input:
             result = clear_current_document()
             return {"messages": state["messages"] + [AIMessage(content=result["message"])]}
         
-        # Check if user wants to load a document (specific phrases only)
         elif any(phrase in user_input for phrase in ["load document", "upload document", "add document", "new document"]) or (("load" in user_input or "upload" in user_input) and any(word in user_input for word in ["file", "pdf", "csv", "txt"])):
             print("📄 Document Loading Mode")
             print("Please provide the path to your document (CSV, PDF, or TXT):")
@@ -84,7 +91,6 @@ def rag(state: Schema):
             result = load_document_for_qa(doc_path)
             return {"messages": state["messages"] + [AIMessage(content=result["message"])]}
         
-        # Otherwise, treat it as a question about the loaded document
         else:
             result = ask_document_question(state["question"])
             
@@ -102,12 +108,10 @@ def rag(state: Schema):
 # FAQ retriever
 def faq(state: Schema):
     try:
-        # Load and process the CSV file
-        csv_path = "/workspaces/Agent/customer_agent/store_qa.csv"
+        csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "store_qa.csv")
         loader = CSVLoader(file_path=csv_path)
         documents = loader.load()
         
-        # Split documents into chunks
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -115,11 +119,10 @@ def faq(state: Schema):
         )
         docs = text_splitter.split_documents(documents)
         
-        # Create embeddings and vector store
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
         vectorstore = Chroma.from_documents(docs, embeddings)
-        
-        # Create retrieval QA chain
+
+        # Retrieval QA chain
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
@@ -127,11 +130,9 @@ def faq(state: Schema):
             return_source_documents=False
         )
         
-        # Get the answer from the QA chain
         question = state["question"]
         response = qa_chain.invoke({"query": question})
         
-        # Extract the result from the response
         if isinstance(response, dict) and "result" in response:
             answer = response["result"]
         else:
@@ -144,9 +145,7 @@ def faq(state: Schema):
         fallback_response = "I'd be happy to help you! I can assist with returns, refunds, shipping, exchanges, coupons, and warranty questions. Please contact customer service at support@company.com for other inquiries."
         return {"messages": state["messages"] + [AIMessage(content=fallback_response)]}
 
-# Submit complaint
 def complaint(state: Schema):
-    # Check if order_id is provided and valid
     if not state.get("order_id"):
         return {"messages": state["messages"] + [AIMessage(content="Order ID is required to submit a complaint. Please provide a valid order ID.")]}
     
@@ -155,7 +154,7 @@ def complaint(state: Schema):
     url = "http://localhost:8000/complaints"
     payload = {
         "id": complaint_id,
-        "order_id": str(state["order_id"]),  # Ensure it's a string
+        "order_id": str(state["order_id"]), 
         "issue": state["messages"][-1].content
     }
     
@@ -208,19 +207,15 @@ def escalate(state: Schema):
     except requests.exceptions.RequestException as e:
         return {"messages": state["messages"] + [AIMessage(content=f"Error connecting to escalation system: {str(e)}")]}
 
-# Summarize chat history
 def summarizer(state: Schema):
     user_messages = "\n".join([msg.content for msg in state["messages"] if msg.type == "human"])
     summary = llm.invoke(f"Summarize this conversation:\n{user_messages}")
     return {"messages": state["messages"] + [AIMessage(content=summary)]}
 
-# Setup memory checkpointer
 checkpointer = MemorySaver()
 
-# LangGraph workflow
 workflow = StateGraph(Schema)
 
-# Nodes
 workflow.add_node("extract_intent", extract_intent)
 workflow.add_node("faq", faq)
 workflow.add_node("rag", rag)
@@ -229,7 +224,6 @@ workflow.add_node("order_track", order_track)
 workflow.add_node("escalate", escalate)
 workflow.add_node("summarizer", summarizer)
 
-# Edges
 workflow.add_edge(START, "extract_intent")
 workflow.add_conditional_edges(
     "extract_intent",
@@ -242,15 +236,12 @@ workflow.add_conditional_edges(
         "escalate": "escalate"
     }
 )
-
-# Add edges to END
 workflow.add_edge("faq", END)
 workflow.add_edge("rag", END)
 workflow.add_edge("complaint", END)
 workflow.add_edge("order_track", END)
 workflow.add_edge("escalate", END)
 
-# Compile
 graph = workflow.compile(checkpointer=checkpointer)
 
 def run_customer_service():
@@ -275,7 +266,7 @@ def run_customer_service():
         try:
             user_input = input("\n👤 You: ").strip()
             
-            # Check for exit commands
+            #exit commands
             if user_input.lower() in ['exit', 'quit', 'bye', 'goodbye']:
                 print("🤖 Assistant: Thank you for using our customer service! Have a great day!")
                 break
@@ -284,7 +275,7 @@ def run_customer_service():
                 print("🤖 Assistant: Please enter your question or concern.")
                 continue
             
-            # Create a fresh thread for each conversation to avoid state pollution
+            # Create a fresh thread for each conversation
             thread = {"configurable": {"thread_id": f"session_{uuid.uuid4()}"}}
             
             # Get order ID only if the intent clearly requires it
@@ -313,12 +304,12 @@ def run_customer_service():
             }
             
             print("🤖 Assistant: Processing your request...")
-            
-            # Run the workflow
+        
             result = graph.invoke(initial_state, config=thread)
             
-            # Display the assistant's response
+
             assistant_responded = False
+            
             for msg in result["messages"]:
                 if isinstance(msg, AIMessage):
                     print(f"🤖 Assistant: {msg.content}")

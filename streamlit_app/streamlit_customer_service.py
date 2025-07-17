@@ -1,8 +1,12 @@
 import streamlit as st
 import uuid
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from langchain_core.messages import AIMessage, HumanMessage
-from customer_agent import extract_intent, faq, complaint, order_track, escalate, summarizer, rag, Schema, graph
-from rag_module import load_document_for_qa, get_document_status, clear_current_document
+from agents.customer_agent import extract_intent, faq, complaint, order_track, escalate, summarizer, rag, Schema, graph
+from rag.rag_module import load_document_for_qa, get_document_status, clear_current_document
 
 st.set_page_config(page_title="Customer Service Agent", page_icon="🎧")
 st.title("Customer Service Agent")
